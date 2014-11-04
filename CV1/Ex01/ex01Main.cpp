@@ -90,23 +90,57 @@ void recompHaar(CMatrix<float> & input, CMatrix<float> & output, const int & lvl
 }
 
 // do wavelet shrinkage
-void waveletShrinkage(const CMatrix<float> & input, CMatrix<float> & output, const int & threshold = 30, const int & lvl = 3) {
+void waveletShrinkage(const CMatrix<float> & input, CMatrix<float> & output, const int & threshold = 30, const bool & soft = true, const int & lvl = 3) {
   assert(input.xSize() == output.xSize());
   assert(input.ySize() == output.ySize());
 
   CMatrix<float> decomp(input);
   decompHaar(input, decomp, lvl);
+
   for (int y = decomp.ySize()/pow(2, lvl); y < decomp.ySize(); ++y) {
     for (int x = decomp.xSize()/pow(2, lvl); x < decomp.xSize(); ++x) {
-      if (decomp(x, y) < threshold)
-        decomp(x, y) = 0;
+      if (!soft) {
+        // hard shrinkage
+        if (abs(decomp(x, y)) < threshold)
+          decomp(x, y) = 0;
+      } else {
+        // soft shrinkage
+        if (abs(decomp(x, y)) > threshold)
+          decomp(x, y) = (decomp(x, y)/abs(decomp(x, y)))*(abs(decomp(x, y)) - threshold);
+        else
+          decomp(x, y) = 0;
+      }
     }
   }
+
   recompHaar(decomp, output, lvl);
 }
 
+double PSNR(const CMatrix<float> & orig, const CMatrix<float> & noise) {
+  assert(orig.xSize() == noise.xSize());
+  assert(orig.ySize() == noise.ySize());
 
-int main(int argc, char** args) {
+  double mse = 0.0;
+
+  for (int y = 0; y < orig.ySize(); ++y) {
+    for (int x = 0; x < orig.xSize(); ++x) {
+      mse += pow(orig(x, y) - noise(x, y), 2);
+    }
+  }
+
+  mse /= orig.xSize()*orig.ySize();
+
+  return 20 * log10(255) - 10 * log10(mse);
+}
+
+int main(int argc, const char* argv[]) {
+  int ws_thresh = 30;
+  bool use_soft = true;
+  if (argc >= 2)
+    ws_thresh = atoi(argv[1]);
+  if (argc >= 3)
+    use_soft = atoi(argv[2]);
+
   CMatrix<float> aImage;
   CMatrix<float> bImage;
   CMatrix<float> cImage;
@@ -122,7 +156,18 @@ int main(int argc, char** args) {
   decompHaar(bImage, bResult, 3, true);
   decompHaar(cImage, cResult, 3, true);
 
-  waveletShrinkage(bImage, wsResult, 60);
+  waveletShrinkage(bImage, wsResult, ws_thresh, use_soft);
+  wsResult.normalize(0, 255);
+
+  std::cout << "PSNR original -- noise:" << std::endl;
+  std::cout << PSNR(aImage, bImage) << std::endl;
+  std::cout << "PSNR noise -- wavelet shrinkage:" << std::endl;
+  std::cout << PSNR(bImage, wsResult) << std::endl;
+  std::cout << "PSNR original -- wavelet shrinkage:" << std::endl;
+  std::cout << PSNR(aImage, wsResult) << std::endl << std::endl;
+
+  std::cout << "wavelet shrinkage: " << (use_soft ? "soft" : "hard") << std::endl;
+  std::cout << "threshold: " << ws_thresh << std::endl;
 
   aResult.writeToPGM("BarbaraDecomp.pgm");
   bResult.writeToPGM("BarbaraNoisyDecomp.pgm");

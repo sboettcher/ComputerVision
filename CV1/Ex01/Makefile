@@ -24,7 +24,7 @@ test: $(TEST_BINARIES)
 	for T in $(TEST_BINARIES); do ./$$T; done
 
 checkstyle:
-	python2 ../cpplint.py --filter=-runtime/references --linelength=200 *.cpp
+	python2 ../cpplint.py --filter=-runtime/references,-whitespace/comments --linelength=200 *.cpp
 
 clean:
 	rm -f *.o
